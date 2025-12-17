@@ -180,37 +180,21 @@ function resolveModelChunk(chunk) {
 
 ## Payload Types
 
-  ------------------------------------------------------------------------------------
-  Type               Format                Description                Output
-  ------------------ --------------------- -------------------------- ----------------
-  `simple`           `command`             Execute any shell command  Blind
-
-  `output`           `command` +           Execute with HTTP callback Yes
-                     `--callback`                                     
-
-  `reverse_shell`    `lhost:lport`         Bash reverse shell         Interactive
-
-  `dns_exfil`        `cmd:domain` or       DNS exfiltration           DNS logs
-                     `domain`                                         
-
-  `http_exfil`       `cmd:callback_url`    HTTP exfiltration          HTTP POST
-
-  `file_read`        `filepath:callback`   Read and exfiltrate file   HTTP POST
-
-  `write_file`       `filepath:content`    Write file to disk         Blind
-
-  `env_dump`         `callback_url`        Dump environment variables HTTP POST
-
-  `cloud_metadata`   `callback_url`        Extract cloud credentials  HTTP POST
-
-  `recon`            `callback_url`        System reconnaissance      HTTP POST
-
-  `stealth_beacon`   `domain`              DNS beacon                 DNS logs
-
-  `webshell`         `filepath`            Deploy Node.js webshell    Port 8080
-
-  `persist`          `callback_url`        Install cron persistence   Cron job
-  ------------------------------------------------------------------------------------
+| Type | Format | Description | Output |
+|------|--------|-------------|--------|
+| `simple` | `command` | Execute any shell command | Blind |
+| `output` | `command` + `--callback` | Execute with HTTP callback | Yes |
+| `reverse_shell` | `lhost:lport` | Bash reverse shell | Interactive |
+| `dns_exfil` | `cmd:domain` or `domain` | DNS exfiltration | DNS logs |
+| `http_exfil` | `cmd:callback_url` | HTTP exfiltration | HTTP POST |
+| `file_read` | `filepath:callback` | Read and exfiltrate file | HTTP POST |
+| `write_file` | `filepath:content` | Write file to disk | Blind |
+| `env_dump` | `callback_url` | Dump environment variables | HTTP POST |
+| `cloud_metadata` | `callback_url` | Extract cloud credentials | HTTP POST |
+| `recon` | `callback_url` | System reconnaissance | HTTP POST |
+| `stealth_beacon` | `domain` | DNS beacon | DNS logs |
+| `webshell` | `filepath` | Deploy Node.js webshell | Port 8080 |
+| `persist` | `callback_url` | Install cron persistence | Cron job |
 
 ## Real-World Scenarios
 
@@ -483,7 +467,7 @@ done
 - [SonarSource: Original Discovery](https://www.sonarsource.com/blog/react-server-components-rce/)
 
 ### Community Resources
-- [maple3142 PoC](https://github.com/maple3142/CVE-2025-55182-PoC)
+- [maple3142](https://github.com/maple3142/)
 - [Public Exploits Collection](https://github.com/projectdiscovery/nuclei-templates)
 
 
