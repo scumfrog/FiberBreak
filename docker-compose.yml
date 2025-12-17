@@ -1,24 +1,23 @@
+version: '3.8'
+
 services:
-  vulnerable-nextjs:
+  vulnerable-app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: vulnerable-nextjs-cve2025
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=development
-      - HOSTNAME=0.0.0.0
     volumes:
       - nextjs-cache:/app/.next
+    container_name: react2shell-lab
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
 
 volumes:
   nextjs-cache:
-    driver: local
