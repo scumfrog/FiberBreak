@@ -1,264 +1,151 @@
 FROM node:18-alpine
-
 WORKDIR /app
 
 # Install system dependencies
-RUN apk add --no-cache bash curl
+RUN apk add --no-cache bash curl netcat-openbsd
 
 # Initialize npm project
 RUN npm init -y
 
-# Install vulnerable Next.js and React versions
-# Next.js 15.1.0 is vulnerable to CVE-2025-55182
-# React 19.0.0 is vulnerable to CVE-2025-55182
-RUN npm install \
-    next@15.1.0 \
-    react@19.0.0 \
-    react-dom@19.0.0 \
-    --legacy-peer-deps
+# Install vulnerable versions
+RUN npm install next@15.0.1 react@19.0.0-rc.0 react-dom@19.0.0-rc.0 --legacy-peer-deps
 
-# Install TypeScript and types
-RUN npm install -D \
-    typescript \
-    @types/react \
-    @types/node \
-    --legacy-peer-deps
+# Configure Next.js
+RUN echo 'module.exports = { experimental: { serverActions: { bodySizeLimit: "10mb" } } }' > next.config.js
 
-# Create Next.js configuration
-RUN cat > next.config.js << 'EOF'
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  reactStrictMode: true,
-  experimental: {}
-}
+# Create app structure
+RUN mkdir -p app
 
-module.exports = nextConfig
-EOF
+# Create vulnerable server action
+RUN cat > app/actions.js << 'EOF'
+'use server'
 
-# Create TypeScript configuration
-RUN cat > tsconfig.json << 'EOF'
-{
-  "compilerOptions": {
-    "target": "es5",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": false,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": ["./*"]
-    }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+export async function processAction(formData) {
+  const data = formData.get('input');
+  console.log('[SERVER ACTION] Received:', data);
+  return { success: true, data };
 }
 EOF
 
-# Create app directory structure (App Router)
-RUN mkdir -p app/actions
+# Create page
+RUN cat > app/page.js << 'EOF'
+'use client'
 
-# Create server action (required for RSC vulnerability)
-RUN cat > app/actions/test.ts << 'EOF'
-'use server';
+import { processAction } from './actions';
+import { useState } from 'react';
 
-export async function testAction(data: string) {
-  console.log('Server action called with:', data);
-  return { 
-    success: true, 
-    message: 'Server action executed',
-    timestamp: new Date().toISOString()
-  };
-}
-EOF
-
-# Create root layout
-RUN cat > app/layout.tsx << 'EOF'
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  return (
-    <html lang="en">
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Vulnerable Next.js - CVE-2025-55182</title>
-      </head>
-      <body style={{ margin: 0, padding: 0 }}>
-        {children}
-      </body>
-    </html>
-  )
-}
-EOF
-
-# Create main page
-RUN cat > app/page.tsx << 'EOF'
-import { testAction } from './actions/test';
-
-export default async function Home() {
-  // Call server action to ensure RSC is active
-  const result = await testAction('page-init');
+export default function Home() {
+  const [result, setResult] = useState(null);
+  
+  async function handleSubmit(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const res = await processAction(formData);
+    setResult(res);
+  }
   
   return (
-    <main style={{
-      minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#0a0a0a',
-      color: '#ffffff',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      padding: '2rem'
+    <div style={{
+      padding: '2rem',
+      fontFamily: 'monospace',
+      backgroundColor: '#000',
+      color: '#0f0',
+      minHeight: '100vh'
     }}>
+      <h1>CVE-2025-55182 Vulnerable Lab</h1>
+      
       <div style={{
-        textAlign: 'center',
-        maxWidth: '800px'
+        border: '3px solid #f00',
+        padding: '1.5rem',
+        margin: '1rem 0',
+        backgroundColor: '#1a0000',
+        borderRadius: '8px'
       }}>
-        {/* Warning Icon */}
-        <div style={{ fontSize: '5rem', marginBottom: '1rem' }}>
-          ⚠️
-        </div>
-        
-        {/* Title */}
-        <h1 style={{
-          fontSize: '3.5rem',
-          fontWeight: 'bold',
-          marginBottom: '1rem',
-          background: 'linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text'
-        }}>
-          Vulnerable Next.js App
-        </h1>
-        
-        {/* Subtitle */}
-        <p style={{
-          fontSize: '1.5rem',
-          color: '#ff6b6b',
-          marginBottom: '2rem',
-          fontWeight: '500'
-        }}>
-          CVE-2025-55182 Test Environment
+        <p style={{color: '#f00', fontWeight: 'bold', fontSize: '1.2rem'}}>
+          VULNERABLE CONFIGURATION
         </p>
-        
-        {/* Info Box */}
-        <div style={{
-          backgroundColor: '#1a1a1a',
-          border: '2px solid #ff6b6b',
-          borderRadius: '12px',
-          padding: '2rem',
-          marginTop: '2rem'
-        }}>
-          <h2 style={{
-            fontSize: '1.2rem',
-            color: '#ffffff',
-            marginBottom: '1rem',
-            fontWeight: '600'
-          }}>
-            Environment Details
-          </h2>
-          
-          <div style={{
-            display: 'grid',
-            gap: '1rem',
-            textAlign: 'left'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#888' }}>React Version:</span>
-              <span style={{ color: '#ff6b6b', fontWeight: 'bold' }}>19.0.0 (VULNERABLE)</span>
-            </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#888' }}>Next.js Version:</span>
-              <span style={{ color: '#ff6b6b', fontWeight: 'bold' }}>15.1.0 (VULNERABLE)</span>
-            </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#888' }}>Router:</span>
-              <span style={{ color: '#4caf50' }}>App Router (RSC Enabled)</span>
-            </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#888' }}>CVE:</span>
-              <span style={{ color: '#ff6b6b', fontWeight: 'bold' }}>CVE-2025-55182</span>
-            </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#888' }}>CVSS Score:</span>
-              <span style={{ color: '#ff6b6b', fontWeight: 'bold' }}>10.0 (CRITICAL)</span>
-            </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#888' }}>Status:</span>
-              <span style={{ color: '#4caf50', fontWeight: 'bold' }}>✓ READY FOR TESTING</span>
-            </div>
-          </div>
-        </div>
-        
-        {/* Usage Instructions */}
-        <div style={{
-          marginTop: '2rem',
-          padding: '1.5rem',
-          backgroundColor: '#1a1a1a',
-          borderRadius: '8px',
-          textAlign: 'left',
-          fontSize: '0.9rem',
-          color: '#aaa'
-        }}>
-          <p style={{ marginBottom: '0.5rem' }}>
-            <strong style={{ color: '#fff' }}>Test with:</strong>
-          </p>
-          <code style={{
-            display: 'block',
-            backgroundColor: '#0a0a0a',
-            padding: '0.75rem',
-            borderRadius: '4px',
-            color: '#4caf50',
-            fontFamily: 'monospace',
-            fontSize: '0.85rem',
-            overflowX: 'auto'
-          }}>
-            python3 fiberbreak.py -u http://localhost:3000 detect
-          </code>
-        </div>
-        
-        {/* Server Action Result */}
-        <div style={{
-          marginTop: '1.5rem',
-          fontSize: '0.8rem',
-          color: '#666'
-        }}>
-          Server Action: {result.message} at {result.timestamp}
-        </div>
+        <ul style={{marginTop: '1rem'}}>
+          <li>Next.js: 15.0.1</li>
+          <li>React: 19.0.0-rc.0</li>
+          <li>CVE: 2025-55182 (React2Shell)</li>
+          <li>Status: <span style={{color: '#f00'}}>EXPLOITABLE</span></li>
+        </ul>
       </div>
-    </main>
-  )
+      
+      <form onSubmit={handleSubmit} style={{marginTop: '2rem'}}>
+        <input 
+          name="input"
+          type="text"
+          placeholder="Enter data"
+          defaultValue="test"
+          style={{
+            padding: '0.75rem',
+            width: '300px',
+            backgroundColor: '#111',
+            border: '2px solid #0f0',
+            color: '#0f0',
+            fontFamily: 'monospace'
+          }}
+        />
+        <button 
+          type="submit"
+          style={{
+            padding: '0.75rem 1.5rem',
+            marginLeft: '1rem',
+            backgroundColor: '#0f0',
+            color: '#000',
+            border: 'none',
+            fontWeight: 'bold',
+            cursor: 'pointer'
+          }}
+        >
+          Execute Action
+        </button>
+      </form>
+      
+      {result && (
+        <pre style={{
+          marginTop: '2rem',
+          padding: '1rem',
+          backgroundColor: '#1a1a1a',
+          border: '2px solid #0f0',
+          color: '#0f0'
+        }}>
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      )}
+      
+      <div style={{
+        marginTop: '3rem',
+        padding: '1rem',
+        backgroundColor: '#1a1a00',
+        border: '1px solid #ff0',
+        borderRadius: '4px',
+        fontSize: '0.9rem'
+      }}>
+        <strong>For Educational Use Only</strong><br/>
+        This environment is intentionally vulnerable to CVE-2025-55182.
+      </div>
+    </div>
+  );
 }
 EOF
 
-# Update package.json scripts
-RUN npm pkg set scripts.dev="next dev" && \
-    npm pkg set scripts.build="next build" && \
-    npm pkg set scripts.start="next start"
+# Create layout
+RUN cat > app/layout.js << 'EOF'
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <head><title>CVE-2025-55182 Lab</title></head>
+      <body style={{margin: 0}}>{children}</body>
+    </html>
+  );
+}
+EOF
 
-# Expose port
+# Configure npm scripts
+RUN npm pkg set scripts.dev="next dev -H 0.0.0.0"
+
 EXPOSE 3000
 
-# Start Next.js dev server
 CMD ["npm", "run", "dev"]
